@@ -1,4 +1,4 @@
-// botvs@d6e4ed5fc801528b2346e0c95bacf758
+//2017.2.22
 /* 临时参数
 1、合约1 最大开仓量
 2、合约2 最大开仓量
@@ -62,9 +62,6 @@ function UpdateJGDate(){
             nextJG_Stamp = array_JG_stamp[j];
             break;
         }
-        if(j == array_JG_stamp.length - 1){
-            nextJG_Stamp = array_JG_stamp[j] + 1000 * 7 * 24 * 60 * 60;
-        }
     }
     array_JG_stamp = [];
     for(var n = 1 ; n <= 100; n++){  // 生成 100 个 模拟交割日期。
@@ -89,30 +86,6 @@ function UpdateJGDate(){
         JGDate.push("BTC" + strMonth + strDate);
     }
     Log("模拟生成的交割日期：", JGDate);
-}
-
-function CancelPendingOrders(e, orderType) {
-    while (true) {
-        var orders = e.GetOrders();
-        if (!orders) {
-            Sleep(Interval);
-            continue;
-        }
-        var processed = 0;
-        for (var j = 0; j < orders.length; j++) {
-            if (typeof(orderType) === 'number' && orders[j].Type !== orderType) {
-                continue;
-            }
-            e.CancelOrder(orders[j].Id, orders[j]);
-            processed++;
-            if (j < (orders.length - 1)) {
-                Sleep(Interval);
-            }
-        }
-        if (processed === 0) {
-            break;
-        }
-    }
 }
 
 function CheckDelivery(nowTime, Symbol, task) {
@@ -247,211 +220,166 @@ function CreateHedgeList(Begin, End, Size, Step, AmountOfPoint, SymbolA, SymbolB
     return HL;
 }
 
-var idA = null;
-var idB = null;
-var A = 0;
-var B = 1;
-var PRE = 2;
+/*
+function Buy_SymbolA_Sell_SymbolB(task){  // 做多合约A——做空合约B， 或者 平空合约A——平多合约B
+    // task.action = [index, "buy", "sell", -task.dic[index].amount];
+    // task.action = [index, "closesell", "closebuy", task.dic[index].hold];
+    if(task.isUseMarketOrder === false){
+        if(task.action[1] === "buy" && task.action[2] === "sell"){ // open
 
-function DealAction(task, AorB, amount){
-    if(AorB == A){
-        task.e.SetContractType(task.symbolA);
-        task.e.SetDirection(task.action[1]);
-        if(task.action[1] == "buy" || task.action[1] == "closesell"){
-            idA = task.e.Buy(-1, typeof(amount) == "undefined" ? Math.abs(task.action[3]) : amount, task.symbolA);
-        }else if(task.action[1] == "sell" || task.action[1] == "closebuy"){
-            idA = task.e.Sell(-1, typeof(amount) == "undefined" ? Math.abs(task.action[3]) : amount, task.symbolA);
+        }else if(task.action[1] === "closesell" && task.action[2] === "closebuy"){ // cover
+            
         }
-    }
-    if(AorB == B){
-        task.e.SetContractType(task.symbolB);
-        task.e.SetDirection(task.action[2]);
-        if(task.action[2] == "buy" || task.action[2] == "closesell"){
-            idB = task.e.Buy(-1, typeof(amount) == "undefined" ? Math.abs(task.action[3]) : amount, task.symbolB);
-        }else if(task.action[2] == "sell" || task.action[2] == "closebuy"){
-            idB = task.e.Sell(-1, typeof(amount) == "undefined" ? Math.abs(task.action[3]) : amount, task.symbolB);
+    }else if(task.isUseMarketOrder === true){
+        if(task.action[1] === "buy" && task.action[2] === "sell"){ // open
+            
+        }else if(task.action[1] === "closesell" && task.action[2] === "closebuy"){ // cover
+            
         }
     }
 }
 
-function UpdatePosition(task, Positions, onlyAorBorPRE){
-    if(Positions.length > 2){
-        Log(Positions, "Positions 长度大于2！#FF0000");
-        throw "同类型合约不能同时持有多仓空仓。";
-    }
-    if(onlyAorBorPRE == PRE){
-        task.Pre_APositions = task.APositions;
-        task.Pre_BPositions = task.BPositions;
-    }
-    for(var i = 0; i < Positions.length; i++){
-        if(Positions[i].ContractType == task.symbolA && onlyAorBorPRE !== B){
-            task.APositions = Positions[i];
+function Sell_SymbolA_Buy_SymbolB(task){  // 做空合约A——做多合约B， 或者 平多合约A——平空合约B
+    // task.action = [index, "sell", "buy", task.dic[index].amount];
+    // task.action = [index, "closebuy", "closesell", task.dic[index].hold];
+    if(task.isUseMarketOrder === false){
+        if(task.action[1] === "sell" && task.action[2] === "buy"){
+
+        }else if(task.action[1] === "closebuy" && task.action[2] === "closesell"){
+
         }
-        if(Positions[i].ContractType == task.symbolB && onlyAorBorPRE !== A){
-            task.BPositions = Positions[i];
-        }
-    }
-    if(Positions.length == 0){
-        if(onlyAorBorPRE !== B){
-            task.APositions = {MarginLevel: 0, Amount: 0, FrozenAmount: 0, Price: 0, Profit: 0, Type: 0, ContractType: ""};
-        }
-        if(onlyAorBorPRE !== A){
-            task.BPositions = {MarginLevel: 0, Amount: 0, FrozenAmount: 0, Price: 0, Profit: 0, Type: 0, ContractType: ""};
-        }
-        if(onlyAorBorPRE !== A && onlyAorBorPRE !== B){
-            task.APositions = {MarginLevel: 0, Amount: 0, FrozenAmount: 0, Price: 0, Profit: 0, Type: 0, ContractType: ""}; 
-            task.BPositions = {MarginLevel: 0, Amount: 0, FrozenAmount: 0, Price: 0, Profit: 0, Type: 0, ContractType: ""};
+    }else if(task.isUseMarketOrder === true){
+        if(task.action[1] === "sell" && task.action[2] === "buy"){
+
+        }else if(task.action[1] === "closebuy" && task.action[2] === "closesell"){
+            
         }
     }
 }
-
-function CalcActualPrice(task){
-    if(task.action[0] == 0){
-        var A_Pv = task.APositions.Price;
-        var B_Pv = task.BPositions.Price; 
-        task.dic[task.action[0]].ActualPrice = A_Pv - B_Pv;
-        Log(task.symbolA, A_Pv, task.symbolB, B_Pv, "#FF0000");
-    }else{
-        var A_Pv = task.APositions.Price;
-        var A_P1 = task.Pre_APositions.Price;
-        var A_m = task.APositions.Amount - task.Pre_APositions.Amount;
-        var A_n = task.Pre_APositions.Amount;
-
-        var B_Pv = task.BPositions.Price; 
-        var B_P1 = task.Pre_BPositions.Price;
-        var B_m = task.BPositions.Amount - task.Pre_BPositions.Amount;
-        var B_n = task.Pre_BPositions.Amount;
-
-        var A_P2 = A_Pv * A_P1 * A_m / ((A_m + A_n) * A_P1 - A_n * A_Pv);
-        var B_P2 = B_Pv * B_P1 * B_m / ((B_m + B_n) * B_P1 - B_n * B_Pv);
-
-        task.dic[task.action[0]].ActualPrice = A_P2 - B_P2;
-        Log(task.symbolA, A_P2, task.symbolB, B_P2, "#FF0000");
-    }
-}
+*/
 
 function Hedge_Open_Cover(task){
     // task.action = [index, "sell", "buy", task.dic[index].amount];
     // task.action = [index, "closebuy", "closesell", task.dic[index].hold];
     if(task.isUseMarketOrder === false){       // 限价单
         if((task.action[1] === "buy" && task.action[2] === "sell") || (task.action[1] === "sell" && task.action[2] === "buy")){ // open
-            
+
         }else if((task.action[1] === "closesell" && task.action[2] === "closebuy") || (task.action[1] === "closesell" && task.action[2] === "closebuy")){ // cover
             
         }
     }else if(task.isUseMarketOrder === true){  // 市价单
+        var idA = null;
+        var idB = null;
+        var orderA = null;
+        var orderB = null;
         if((task.action[1] === "buy" && task.action[2] === "sell") || (task.action[1] === "sell" && task.action[2] === "buy")){ // open
-            // DealAction()
-            DealAction(task, A);
-            DealAction(task, B);
+            task.e.SetContractType(task.symbolA);
+            task.e.SetDirection(task.action[1]);
+            if(task.action[1] == "buy"){
+                idA = task.e.Buy(-1, Math.abs(task.action[3]), task.symbolA);
+            }else if(task.action[1] == "sell"){
+                idA = task.e.Sell(-1, Math.abs(task.action[3]), task.symbolA);
+            }
+
+            task.e.SetContractType(task.symbolB);
+            task.e.SetDirection(task.action[2]);
+            if(task.action[2] == "buy"){
+                idB = task.e.Buy(-1, Math.abs(task.action[3]), task.symbolB);
+            }else if(task.action[2] == "sell"){
+                idB = task.e.Sell(-1, Math.abs(task.action[3]), task.symbolB);
+            }
 
             while(!idA || !idB){
                 if(!idA){
-                    DealAction(task, A);
+                    task.e.SetContractType(task.symbolA);
+                    task.e.SetDirection(task.action[1]);
+                    if(task.action[1] == "buy"){
+                        idA = task.e.Buy(-1, Math.abs(task.action[3]), task.symbolA);
+                    }else if(task.action[1] == "sell"){
+                        idA = task.e.Sell(-1, Math.abs(task.action[3]), task.symbolA);
+                    }
                 }
                 if(!idB){
-                    DealAction(task, B);
+                    task.e.SetContractType(task.symbolB);
+                    task.e.SetDirection(task.action[2]);
+                    if(task.action[2] == "buy"){
+                        idB = task.e.Buy(-1, Math.abs(task.action[3]), task.symbolB);
+                    }else if(task.action[2] == "sell"){
+                        idB = task.e.Sell(-1, Math.abs(task.action[3]), task.symbolB);
+                    }
                 }
             }
             
-            var AOK = false;
-            var BOK = false;
-            var ADealAmount = Math.abs(task.action[3]);
-            var BDealAmount = Math.abs(task.action[3]);
             while(true){
-                Sleep(500);
-                var Positions = _C(task.e.GetPosition);  // 获取持仓信息。
-                if(AOK == false){
-                    // 撤掉，获取持仓，计算成功多少，重新挂。
-                    CancelPendingOrders(task.e, task.action[1] == "buy" ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
-                    var APreAmount = task.APositions.Amount;  // 获取更新前的持仓量。
-                    UpdatePosition(task, Positions, A);          // 更新
-                    var AnowAmount = task.APositions.Amount;  // 获取当前的持仓量。
-                    ADealAmount = ADealAmount - (AnowAmount - APreAmount);
-                    if(ADealAmount !== 0){
-                        DealAction(task, A, ADealAmount);
-                    }else{
-                        AOK = true;
-                    }  
+                if(!orderA || orderA.Status !== ORDER_STATE_CLOSED){
+                    orderA = task.e.GetOrder(idA);
                 }
-                if(BOK == false){
-                    CancelPendingOrders(task.e, task.action[2] == "buy" ? ORDER_TYPE_BUY : ORDER_TYPE_SELL);
-                    var BPreAmount = task.BPositions.Amount;  // 获取更新前的持仓量。
-                    UpdatePosition(task, Positions, B);         // 更新
-                    var BnowAmount = task.BPositions.Amount;  // 获取当前的持仓量。
-                    BDealAmount = BDealAmount - (BnowAmount - BPreAmount);
-                    if(BDealAmount !== 0){
-                        DealAction(task, B, BDealAmount);
-                    }else{
-                        BOK = true;
-                    }  
+                if(!orderB || orderB.Status !== ORDER_STATE_CLOSED){
+                    orderB = task.e.GetOrder(idB);
                 }
-                if(AOK && BOK){
+                if(orderA && orderB && orderA.Status == ORDER_STATE_CLOSED && orderB.Status == ORDER_STATE_CLOSED){
                     break;
                 }
+                Sleep(500);
             }
 
-            //Log("Open symbolA:", task.APositions, "symbolB:", task.BPositions);
+            Log("Open symbolA:", orderA, "symbolB:", orderB);
             task.dic[task.action[0]].hold = task.action[3];
-            //task.dic[task.action[0]].ActualPrice = ;
+            task.dic[task.action[0]].ActualPrice = _N(orderA.AvgPrice - orderB.AvgPrice);
         }else if((task.action[1] === "closesell" && task.action[2] === "closebuy") || (task.action[1] === "closebuy" && task.action[2] === "closesell")){ // cover
-            // DealAction()
-            DealAction(task, A);
-            DealAction(task, B);
+            task.e.SetContractType(task.symbolA);
+            task.e.SetDirection(task.action[1]);
+            if(task.action[1] == "closebuy"){
+                idA = task.e.Sell(-1, Math.abs(task.action[3]), task.symbolA);
+            }else if(task.action[1] == "closesell"){
+                idA = task.e.Buy(-1, Math.abs(task.action[3]), task.symbolA);
+            }
+
+            task.e.SetContractType(task.symbolB);
+            task.e.SetDirection(task.action[2]);
+            if(task.action[2] == "closebuy"){
+                idB = task.e.Sell(-1, Math.abs(task.action[3]), task.symbolB);
+            }else if(task.action[2] == "closesell"){
+                idB = task.e.Buy(-1, Math.abs(task.action[3]), task.symbolB);
+            }
 
             while(!idA || !idB){
                 if(!idA){
-                    DealAction(task, A);
+                    task.e.SetContractType(task.symbolA);
+                    task.e.SetDirection(task.action[1]);
+                    if(task.action[1] == "closebuy"){
+                        idA = task.e.Sell(-1, Math.abs(task.action[3]), task.symbolA);
+                    }else if(task.action[1] == "closesell"){
+                        idA = task.e.Buy(-1, Math.abs(task.action[3]), task.symbolA);
+                    }
                 }
                 if(!idB){
-                    DealAction(task, B);
+                    task.e.SetContractType(task.symbolB);
+                    task.e.SetDirection(task.action[2]);
+                    if(task.action[2] == "closebuy"){
+                        idB = task.e.Sell(-1, Math.abs(task.action[3]), task.symbolB);
+                    }else if(task.action[2] == "closesell"){
+                        idB = task.e.Buy(-1, Math.abs(task.action[3]), task.symbolB);
+                    }
                 }
             }
 
-            var AOK = false;
-            var BOK = false;
-            var ADealAmount = Math.abs(task.action[3]);
-            var BDealAmount = Math.abs(task.action[3]);
             while(true){
-                Sleep(500);
-                var Positions = _C(task.e.GetPosition);  // 获取持仓信息。
-                if(AOK == false){
-                    // 撤掉，获取持仓，计算成功多少，重新挂。
-                    CancelPendingOrders(task.e, task.action[1] == "closebuy" ? ORDER_TYPE_SELL : ORDER_TYPE_BUY);
-                    var APreAmount = task.APositions.Amount;  // 获取更新前的持仓量。
-                    UpdatePosition(task, Positions, A);          // 更新
-                    var AnowAmount = task.APositions.Amount;  // 获取当前的持仓量。
-                    ADealAmount = ADealAmount - (APreAmount - AnowAmount);
-                    if(ADealAmount !== 0){
-                        DealAction(task, A, ADealAmount);
-                    }else{
-                        AOK = true;
-                    }  
-                    Log(ADealAmount, APreAmount, AnowAmount, Positions);  // ceshi
+                if(!orderA || orderA.Status !== ORDER_STATE_CLOSED){
+                    orderA = task.e.GetOrder(idA);
                 }
-                if(BOK == false){
-                    CancelPendingOrders(task.e, task.action[2] == "closebuy" ? ORDER_TYPE_SELL : ORDER_TYPE_BUY);
-                    var BPreAmount = task.BPositions.Amount;  // 获取更新前的持仓量。
-                    UpdatePosition(task, Positions, B);         // 更新
-                    var BnowAmount = task.BPositions.Amount;  // 获取当前的持仓量。
-                    BDealAmount = BDealAmount - (BPreAmount - BnowAmount);
-                    if(BDealAmount !== 0){
-                        DealAction(task, B, BDealAmount);
-                    }else{
-                        BOK = true;
-                    }  
-                    Log(BDealAmount, BPreAmount, BnowAmount, Positions);  // ceshi
+                if(!orderB || orderB.Status !== ORDER_STATE_CLOSED){
+                    orderB = task.e.GetOrder(idB);
                 }
-                if(AOK && BOK){
+                if(orderA && orderB && orderA.Status == ORDER_STATE_CLOSED && orderB.Status == ORDER_STATE_CLOSED){
                     break;
                 }
+                Sleep(500);
             }
 
-            //Log("Cover symbolA:", task.APositions, "symbolB:", task.BPositions);
-            //task.dic[task.action[0]].PointProfit += _N(Math.abs(task.dic[task.action[0]].ActualPrice - (orderA.AvgPrice - orderB.AvgPrice)));
+            Log("Cover symbolA:", orderA, "symbolB:", orderB);
             task.dic[task.action[0]].hold = 0;
             task.dic[task.action[0]].ActualPrice = 0;
-            task.dic[task.action[0]].CoverTimes += 1;
         }
         Sleep(100); // 避免访问过于频繁。
     }
@@ -483,10 +411,8 @@ function TasksController(){ // 任务控制器 构造函数
             nowAccount : null,
             isFrozen : false,
             FrozenStartTime : 0,
-            APositions : {MarginLevel: 0, Amount: 0, FrozenAmount: 0, Price: 0, Profit: 0, Type: 0, ContractType: ""},
-            BPositions : {MarginLevel: 0, Amount: 0, FrozenAmount: 0, Price: 0, Profit: 0, Type: 0, ContractType: ""},
-            Pre_APositions : null,
-            Pre_BPositions : null,
+            APositions : null,
+            BPositions : null,
             PositionsLastUpdateTime : 0,
             isLogProfit : false,
             taskProfit : 0,
@@ -510,19 +436,12 @@ function TasksController(){ // 任务控制器 构造函数
                     amount: Number(tmp[2]),                              // 量..
                     hold: 0,                                             // 持仓 初始为0
                     ActualPrice: 0,
-                    PointProfit : 0,                                     // 但个仓位累计差价。
-                    CoverTimes : 0,                                      // 平仓次数
                 };
                 task.dic.push(st);
             });
             // 处理其它 初始化工作
-            task.e.SetMarginLevel(task.MarginLevel);                     // 设置杠杆
             task.nowAccount = _C(task.e.GetAccount);                     // 初始化 当前账户信息
             // 检查， 启用的网格 是否会 耗尽资金
-            if(task.dic[0].open < 0 && isCreateHedgeList){
-                throw "自动网格生成错误：第一个节点开仓值小于0，会引起产生重复部分。" +JSON.stringify(task.dic);
-            }
-
             var dic_length = task.dic.length;
             var sumPiece = 0;
             for(var i = 0; i < dic_length; i++){
@@ -588,30 +507,18 @@ function TasksController(){ // 任务控制器 构造函数
                 if(task.dic[index].hold === 0){
                     if(task.dic[index].open <= task.Adiff){                            // 正对冲 空A 多B
                         task.action = [index, "sell", "buy", task.dic[index].amount];
-                        Log(JSON.stringify(task.action), "A->B:", task.Adiff);
+                        Log(JSON.stringify(task.action));
                         // Sell_SymbolA_Buy_SymbolB(task);
                         Hedge_Open_Cover(task);
                         $.PlotFlag(nowTime, "O", "sell-buy", "flag", "red");
                         task.isLogProfit = false;
-                        task.nowAccount = _C(task.e.GetAccount);
-                        var Positions = _C(task.e.GetPosition);  // 获取持仓信息。
-                        UpdatePosition(task, Positions);
-                        CalcActualPrice(task);
-                        UpdatePosition(task, Positions, PRE);
-                        Log("Open symbolA:", task.APositions, "symbolB:", task.BPositions);
                     }else if(task.dic[index].open <= -task.Bdiff){                     // 反对冲 多A 空B
                         task.action = [index, "buy", "sell", -task.dic[index].amount];
-                        Log(JSON.stringify(task.action), "B->A:", task.Bdiff);
+                        Log(JSON.stringify(task.action));
                         // Buy_SymbolA_Sell_SymbolB(task);
                         Hedge_Open_Cover(task);
                         $.PlotFlag(nowTime, "O", "buy-sell", "flag", "red");
                         task.isLogProfit = false;
-                        task.nowAccount = _C(task.e.GetAccount);
-                        var Positions = _C(task.e.GetPosition);  // 获取持仓信息。
-                        UpdatePosition(task, Positions);
-                        CalcActualPrice(task);
-                        UpdatePosition(task, Positions, PRE);
-                        Log("Open symbolA:", task.APositions, "symbolB:", task.BPositions);
                     }else{
                         SumHold--;
                     }
@@ -623,9 +530,6 @@ function TasksController(){ // 任务控制器 构造函数
                         Hedge_Open_Cover(task);
                         $.PlotFlag(nowTime, "C", "closesell-closebuy", "circlepin");
                         task.nowAccount = _C(task.e.GetAccount);
-                        var Positions = _C(task.e.GetPosition);  // 获取持仓信息。
-                        UpdatePosition(task, Positions, PRE);
-                        Log("Cover symbolA:", task.APositions, "symbolB:", task.BPositions);
                     }else if(task.dic[index].hold < 0 && task.dic[index].cover >= -task.Adiff){  // 平多A 平空B
                         task.action = [index, "closebuy", "closesell", task.dic[index].hold];
                         Log(JSON.stringify(task.action));
@@ -633,18 +537,15 @@ function TasksController(){ // 任务控制器 构造函数
                         Hedge_Open_Cover(task);
                         $.PlotFlag(nowTime, "C", "closebuy-closesell", "circlepin");
                         task.nowAccount = _C(task.e.GetAccount);
-                        var Positions = _C(task.e.GetPosition);  // 获取持仓信息。
-                        UpdatePosition(task, Positions, PRE);
-                        Log("Cover symbolA:", task.APositions, "symbolB:", task.BPositions);
                     }
                 }
             }
 
             // 更新持仓信息， 计算爆仓风险。
             if(SumHold != 0 && nowTime - task.PositionsLastUpdateTime > 1000 * 30){
-                // var Positions = _C(task.e.GetPosition);  // 获取持仓信息。
-                // task.APositions = Positions[0];
-                // task.BPositions = Positions[1];
+                var Positions = _C(task.e.GetPosition);  // 获取持仓信息。
+                task.APositions = Positions[0];
+                task.BPositions = Positions[1];
                 task.PositionsLastUpdateTime = nowTime;
             }else if(SumHold == 0 && task.isLogProfit == false){
                 // LogProfit(task.nowAccount.Stocks - task.initAccount.Stocks, "当前：", task.nowAccount, "初始：", task.initAccount);
@@ -669,8 +570,7 @@ function TasksController(){ // 任务控制器 构造函数
             };
             for(var key in task){
                 value = task[key];
-                if(key === "dic" || key === "Adepth" || key === "Bdepth" || key === "initAccount" || key === "nowAccount" || key === "isFrozen" || 
-                    key === "FrozenStartTime" || key === "Pre_APositions" || key === "Pre_BPositions"){ // 过滤显示
+                if(key === "dic" || key === "Adepth" || key === "Bdepth" || key === "initAccount" || key === "nowAccount" || key === "isFrozen" || key === "FrozenStartTime"){ // 过滤显示
                     continue;
                 }
                 if(key === "e"){

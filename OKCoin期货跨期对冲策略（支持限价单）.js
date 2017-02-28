@@ -1,3 +1,4 @@
+// botvs@1cd2b5f56ddbc2c986c25d13dd45ed2d
 //2017.2.22
 /* 临时参数
 1、合约1 最大开仓量
@@ -32,12 +33,12 @@ var JGDateIndex = 0;                                 // 模拟交割索引。
 var JGHoursCorrect = 8;                              // 检测交割剩余小时，在实盘中需要修正 8小时。 模拟时该值设置为0
 var idA = null;
 var idB = null;
-var A = 0;
-var B = 1;
-var PRE = 2;
-var PLUS = 3;
-var MINUS = 4;
-var FREE = 5;
+var A = 1;
+var B = 2;
+var PRE = 3;
+var PLUS = 4;
+var MINUS = 5;
+var FREE = 6;
 
 function init(){
     if(istry){
@@ -283,16 +284,127 @@ function DealAction(task, AorB, amount){
     }
 }
 
+function DealActionLimit(task, AorB, Piece, isAgain){
+    var tradeInfo  = null;
+    var Price = 0;
+    var Piece = Math.abs(Piece);
+    if(isAgain){
+        while(true){
+            task.e.SetContractType(task.symbolA);
+            var Adepth = task.e.GetDepth();
+            task.e.SetContractType(task.symbolB);
+            var Bdepth = task.e.GetDepth();
+            
+            if(!Adepth || !Bdepth || Adepth.Asks.length === 0 || Adepth.Bids.length === 0 || Bdepth.Asks.length === 0 || Bdepth.Bids.length === 0){
+                //Log("获取深度信息异常！", Adepth, Bdepth);
+                Sleep(Interval);
+                continue;
+            }
+            
+            task.Adepth = Adepth;
+            task.Bdepth = Bdepth;
+            
+            task.Adiff = _N(Adepth.Bids[0].Price - Bdepth.Asks[0].Price);
+            task.Bdiff = _N(Adepth.Asks[0].Price - Bdepth.Bids[0].Price);
+            break;
+        }
+    }
+    task.e.SetContractType(AorB == A ? task.symbolA : task.symbolB);
+    task.e.SetDirection(task.action[AorB]);
+    if(task.action[AorB] == "buy"){
+        Price = AorB == A ? task.Adepth.Asks[0].Price : task.Bdepth.Asks[0].Price;
+        tradeInfo = task.P.OpenLong(AorB == A ? task.symbolA : task.symbolB, Piece, Price);
+    }else if(task.action[AorB] == "sell"){
+        Price = AorB == A ? task.Adepth.Bids[0].Price : task.Bdepth.Bids[0].Price;
+        tradeInfo = task.P.OpenShort(AorB == A ? task.symbolA : task.symbolB, Piece, Price);
+    }else if(task.action[AorB] == "closebuy"){
+        Price = AorB == A ? task.Adepth.Bids[0].Price : task.Bdepth.Bids[0].Price;
+        tradeInfo = task.P.Cover(AorB == A ? task.symbolA : task.symbolB, Price, Piece, PD_LONG); // task.action[AorB] 
+    }else if(task.action[AorB] == "closesell"){
+        Price = AorB == A ? task.Adepth.Asks[0].Price : task.Bdepth.Asks[0].Price;
+        tradeInfo = task.P.Cover(AorB == A ? task.symbolA : task.symbolB, Price, Piece, PD_SHORT); // task.action[AorB]
+    }
+    if((task.action[AorB] == "buy" || task.action[AorB] == "sell") && tradeInfo.amount === 0){
+        return false;
+    }else if((task.action[AorB] == "closebuy" || task.action[AorB] == "closesell") && tradeInfo == 0){
+        return false;
+    }
+    return tradeInfo;
+}
+
+function CalcActualPrice(task){
+    if(task.action[0] == 0){
+        var A_Pv = task.APositions.Price;
+        var B_Pv = task.BPositions.Price; 
+        task.dic[task.action[0]].ActualPrice = A_Pv - B_Pv;
+        Log(task.symbolA, A_Pv, task.symbolB, B_Pv, "#FF0000");
+    }else if(task.APositions.Amount == 1 && task.BPositions.Amount == 1){
+        var A_Pv = task.APositions.Price;
+        var B_Pv = task.BPositions.Price; 
+        task.dic[task.action[0]].ActualPrice = A_Pv - B_Pv;
+        Log(task.symbolA, A_Pv, task.symbolB, B_Pv, "#FF0000");
+    }else{
+        var A_Pv = task.APositions.Price;
+        var A_P1 = task.Pre_APositions.Price;
+        var A_m = task.APositions.Amount - task.Pre_APositions.Amount;
+        var A_n = task.Pre_APositions.Amount;
+
+        var B_Pv = task.BPositions.Price; 
+        var B_P1 = task.Pre_BPositions.Price;
+        var B_m = task.BPositions.Amount - task.Pre_BPositions.Amount;
+        var B_n = task.Pre_BPositions.Amount;
+
+        var A_P2 = A_Pv * A_P1 * A_m / ((A_m + A_n) * A_P1 - A_n * A_Pv);
+        var B_P2 = B_Pv * B_P1 * B_m / ((B_m + B_n) * B_P1 - B_n * B_Pv);
+
+        task.dic[task.action[0]].ActualPrice = A_P2 - B_P2;
+        Log(task.symbolA, A_P2, task.symbolB, B_P2, "#FF0000");
+    }
+}
+
 function Hedge_Open_Cover(task){
     if(task.isUseMarketOrder === false){       // 限价单
         if((task.action[1] === "buy" && task.action[2] === "sell") || (task.action[1] === "sell" && task.action[2] === "buy")){ // open
-            // task.F_tradeInfo = task.P.OpenLong(task.ContractType, piece, task.F_depth.Asks[0].Price);
-            if(task.action[1] === "buy"){
-                
+            var tradeInfo_A = DealActionLimit(task, A, task.action[3]);
+            var dealAmount_A = Math.abs(task.action[3]);
+            while(tradeInfo_A == false || (dealAmount_A -= tradeInfo_A.amount) !== 0){
+                Log("合约：" + task.symbolA + "已对冲" + (tradeInfo_A == false ? 0 : tradeInfo_A.amount), "剩余，重试！张数：" + dealAmount_A);
+                tradeInfo_A = DealActionLimit(task, A, dealAmount_A, true);
+                Sleep(Interval);
             }
-        }else if((task.action[1] === "closesell" && task.action[2] === "closebuy") || (task.action[1] === "closesell" && task.action[2] === "closebuy")){ // cover
+
+            var tradeInfo_B = DealActionLimit(task, B, task.action[3]);
+            var dealAmount_B = Math.abs(task.action[3]);
+            while(tradeInfo_B == false || (dealAmount_B -= tradeInfo_B.amount) !== 0){
+                Log("合约：" + task.symbolB + "已对冲" + (tradeInfo_B == false ? 0 : tradeInfo_B.amount), "剩余，重试！张数：" + dealAmount_B);
+                tradeInfo_B = DealActionLimit(task, B, dealAmount_B, true);
+                Sleep(Interval);
+            }
+
+            task.dic[task.action[0]].hold = task.action[3];
+            // task.dic[task.action[0]].ActualPrice = _N(orderA.AvgPrice - orderB.AvgPrice);
+        }else if((task.action[1] === "closesell" && task.action[2] === "closebuy") || (task.action[1] === "closebuy" && task.action[2] === "closesell")){ // cover
+            var tradeInfo_A_Piece = DealActionLimit(task, A, task.action[3]);
+            var dealAmount_A = Math.abs(task.action[3]);
+            while(tradeInfo_A_Piece == false || (dealAmount_A -= tradeInfo_A_Piece) !== 0){
+                Log("合约：" + task.symbolA + "已对冲" + (tradeInfo_A == false ? 0 : tradeInfo_A_Piece), "剩余，重试！张数：" + dealAmount_A);
+                tradeInfo_A_Piece = DealActionLimit(task, A, dealAmount_A, true);
+                Sleep(Interval);
+            }
             
+            var tradeInfo_B_Piece = DealActionLimit(task, B, task.action[3]);
+            var dealAmount_B = Math.abs(task.action[3]);
+            while(tradeInfo_B_Piece == false || (dealAmount_B -= tradeInfo_B_Piece) !== 0){
+                Log("合约：" + task.symbolB + "已对冲" + (tradeInfo_B == false ? 0 : tradeInfo_B_Piece), "剩余，重试！张数：" + dealAmount_B);
+                tradeInfo_B_Piece = DealActionLimit(task, B, dealAmount_B, true);
+                Sleep(Interval);
+            }
+
+            task.dic[task.action[0]].hold = 0;
+            task.dic[task.action[0]].ActualPrice = 0;
+            task.dic[task.action[0]].CoverTimes += 1;
         }
+        Sleep(100);
     }else if(task.isUseMarketOrder === true){  // 市价单
         var orderA = null;
         var orderB = null;
@@ -319,7 +431,7 @@ function Hedge_Open_Cover(task){
                 if(orderA && orderB && orderA.Status == ORDER_STATE_CLOSED && orderB.Status == ORDER_STATE_CLOSED){
                     break;
                 }
-                Sleep(500);
+                Sleep(Interval);
             }
 
             //Log("Open symbolA:", orderA, "symbolB:", orderB);
@@ -348,7 +460,7 @@ function Hedge_Open_Cover(task){
                 if(orderA && orderB && orderA.Status == ORDER_STATE_CLOSED && orderB.Status == ORDER_STATE_CLOSED){
                     break;
                 }
-                Sleep(500);
+                Sleep(Interval);
             }
 
             //Log("Cover symbolA:", orderA, "symbolB:", orderB);
@@ -388,6 +500,8 @@ function TasksController(){ // 任务控制器 构造函数
             FrozenStartTime : 0,
             APositions : null,
             BPositions : null,
+            Pre_APositions : null,
+            Pre_BPositions : null,
             PositionsLastUpdateTime : 0,
             isLogProfit : false,
             taskProfit : 0,
@@ -418,6 +532,8 @@ function TasksController(){ // 任务控制器 构造函数
                 task.dic.push(st);
             });
             // 处理其它 初始化工作
+            task.P = $.NewPositionManager(task.e);
+            task.isUseMarketOrder = isUseMarketOrder;                    // 初始是否使用市价单
             task.e.SetMarginLevel(task.MarginLevel);                     // 设置杠杆
             task.nowAccount = _C(task.e.GetAccount);                     // 初始化 当前账户信息
             // 检查， 启用的网格 是否会 耗尽资金
@@ -490,26 +606,28 @@ function TasksController(){ // 任务控制器 构造函数
                     if(task.dic[index].open <= task.Adiff && task.State !== MINUS){                            // 正对冲 空A 多B
                         task.action = [index, "sell", "buy", task.dic[index].amount];
                         Log(JSON.stringify(task.action));
-                        // Sell_SymbolA_Buy_SymbolB(task);
                         Hedge_Open_Cover(task);
+
                         $.PlotFlag(nowTime, "O", "sell-buy", "flag", "red");
                         task.isLogProfit = false;
                         task.nowAccount = _C(task.e.GetAccount);        
                         var Positions = _C(task.e.GetPosition);  // 获取持仓信息。
-                        UpdatePosition(task, Positions);
+                        UpdatePosition(task, Positions, PRE);
                         Log("Open symbolA:", task.APositions, "symbolB:", task.BPositions);
+                        CalcActualPrice(task);
                         task.State = PLUS;
                     }else if(task.dic[index].open <= -task.Bdiff && task.State !== PLUS){                     // 反对冲 多A 空B
                         task.action = [index, "buy", "sell", -task.dic[index].amount];
                         Log(JSON.stringify(task.action));
-                        // Buy_SymbolA_Sell_SymbolB(task);
                         Hedge_Open_Cover(task);
+
                         $.PlotFlag(nowTime, "O", "buy-sell", "flag", "red");
                         task.isLogProfit = false;
                         task.nowAccount = _C(task.e.GetAccount);        
                         var Positions = _C(task.e.GetPosition);  // 获取持仓信息。
-                        UpdatePosition(task, Positions);
+                        UpdatePosition(task, Positions, PRE);
                         Log("Open symbolA:", task.APositions, "symbolB:", task.BPositions);
+                        CalcActualPrice(task);
                         task.State = MINUS;
                     }else{
                         SumHold--;
@@ -566,7 +684,8 @@ function TasksController(){ // 任务控制器 构造函数
             };
             for(var key in task){
                 value = task[key];
-                if(key === "dic" || key === "Adepth" || key === "Bdepth" || key === "initAccount" || key === "nowAccount" || key === "isFrozen" || key === "FrozenStartTime"){ // 过滤显示
+                if(key === "dic" || key === "Adepth" || key === "Bdepth" || key === "initAccount" || key === "nowAccount" || key === "isFrozen" || 
+                    key === "FrozenStartTime" || key === "P" || key === "Pre_APositions" || key === "Pre_BPositions"){ // 过滤显示
                     continue;
                 }
                 if(key === "e"){
@@ -748,7 +867,7 @@ function main(){
         var PreTC = _G("TC");
         for(var index = 0; index < TC.tasks.length ; index++){
             for(var key in TC.tasks[index]){
-                if(key == "e" || key == "Adepth" || key == "Bdepth"){
+                if(key == "e" || key == "Adepth" || key == "Bdepth" || key == "P"){
                     continue;
                 }
                 TC.tasks[index][key] = PreTC.tasks[index][key];
